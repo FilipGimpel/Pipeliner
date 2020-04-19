@@ -28,35 +28,6 @@ class Instruction:
         self.argument_register_1, self.argument_register_2 = self.argument_register_2, self.argument_register_1
 
 
-class PipelinerSimplified:
-    cycles_util_available: Dict[str, int] = {}
-    instructions: List[Instruction] = []  # TODO do I need this? I use it in only one function, maybe just pass?
-    current_cycle = 0
-
-    def __init__(self, instructions: List[Instruction]):
-        self.instructions = instructions[:]
-        self.cycles_util_available = {"R{0}".format(i): 0 for i in range(0, 10)}
-
-    def process(self):
-        while self.instructions:
-            instruction = self.instructions[0]
-            if self.can_execute(instruction):
-                self.cycles_util_available[instruction.result_register] = 4
-                print(str(instruction) + " " + str(self.current_cycle + 1))  # TODO Use stringbuffer kinda thing?
-                self.instructions.remove(instruction)
-            self.cycle()
-
-    def can_execute(self, instruction: Instruction) -> bool:
-        return (self.cycles_util_available[instruction.argument_register_1] <= 0) and \
-               (self.cycles_util_available[instruction.argument_register_2] <= 1)
-
-    def cycle(self):
-        self.current_cycle += 1
-        # print(str(self.current_cycle) + "\t" + str(self.cycles_util_available))
-        self.cycles_util_available = \
-            {key: (value - 1 if value > 0 else value) for (key, value) in self.cycles_util_available.items()}
-
-
 class Pipeliner:
     cycles_until_available: Dict[str, int] = {}
     instructions: List[Instruction] = []  # TODO do I need this? I use it in only one function, maybe just pass?
@@ -108,8 +79,45 @@ def load_from_file(file_path: str) -> List[Instruction]:
     return instructions
 
 
+# print()
+# Pipeliner(list_of_instructions).process()
+
+
 list_of_instructions = load_from_file('input.txt')
 
-PipelinerSimplified(list_of_instructions).process()
-print()
-Pipeliner(list_of_instructions).process()
+
+def process_simplified(instructions: List[Instruction],
+                       starting_cycle: int,
+                       cycles_util_available: Dict[str, int]) -> Dict[Instruction, int]:
+
+    def can_execute(instr: Instruction) -> bool:
+        return (cycles_util_available[instr.argument_register_1] <= 0) and \
+               (cycles_util_available[instr.argument_register_2] <= 1)
+
+    result: Dict[Instruction, int] = {}
+
+    while instructions:
+        instruction = instructions[0]
+        if can_execute(instruction):
+            cycles_util_available[instruction.result_register] = 4
+            result[instruction] = starting_cycle + 1
+            instructions.remove(instruction)
+        starting_cycle += 1
+        # print(str(self.current_cycle) + "\t" + str(self.cycles_util_available))
+        cycles_util_available = \
+            {key: (value - 1 if value > 0 else value) for (key, value) in cycles_util_available.items()}
+
+    return result
+
+
+def print_instructions(scheduled_instructions: Dict[Instruction, int]):
+    for instruction, start_cycle in scheduled_instructions.items():
+        print(str(instruction) + " " + str(start_cycle))
+
+
+def registers_availability_monitor(size: int):
+    return {"R{0}".format(i): 0 for i in range(0, size+1)}
+
+
+instructions_simplified_variant = process_simplified(list_of_instructions, 0, registers_availability_monitor(10))
+print_instructions(instructions_simplified_variant)
