@@ -44,8 +44,6 @@ class PipelinerSimplified:
                 self.cycles_util_available[instruction.result_register] = 4
                 print(str(instruction) + " " + str(self.current_cycle + 1))  # TODO Use stringbuffer kinda thing?
                 self.instructions.remove(instruction)
-            if sum(self.cycles_util_available.values()) == 0:
-                break
             self.cycle()
 
     def can_execute(self, instruction: Instruction) -> bool:
@@ -54,7 +52,7 @@ class PipelinerSimplified:
 
     def cycle(self):
         self.current_cycle += 1
-        # print(str(self.current_cycle) + "\t" + str(self.register))
+        # print(str(self.current_cycle) + "\t" + str(self.cycles_util_available))
         self.cycles_util_available = \
             {key: (value - 1 if value > 0 else value) for (key, value) in self.cycles_util_available.items()}
 
@@ -75,17 +73,16 @@ class Pipeliner:
                 self.cycles_until_available[instruction.result_register] = 4
                 print(str(instruction) + " " + str(self.current_cycle + 1))  # TODO Use stringbuffer kinda thing?
                 self.instructions.remove(instruction)
-            # TODO this too much iterations, did it only so cycle() would print all busy registers until free
-            if sum(self.cycles_until_available.values()) == 0:
-                break
             self.cycle()
 
     def can_execute(self, instruction: Instruction) -> bool:
-        if instruction.is_commutative() and self.can_execute_swapped(instruction):
+        if self.can_execute_as_is(instruction):
+            return True
+        elif instruction.is_commutative() and self.can_execute_swapped(instruction):
             instruction.swap_arguments()
             return True
         else:
-            return self.can_execute_as_is(instruction)
+            return False
 
     def can_execute_as_is(self, instruction: Instruction) -> bool:
         return (self.cycles_until_available[instruction.argument_register_1] <= 0) and \
@@ -97,7 +94,7 @@ class Pipeliner:
 
     def cycle(self):
         self.current_cycle += 1
-        # print(str(self.current_cycle) + "\t" + str(self.register))
+        # print(str(self.current_cycle) + "\t" + str(self.cycles_until_available))
         self.cycles_until_available = \
             {key: (value - 1 if value > 0 else value) for (key, value) in self.cycles_until_available.items()}
 
@@ -114,19 +111,5 @@ def load_from_file(file_path: str) -> List[Instruction]:
 list_of_instructions = load_from_file('input.txt')
 
 PipelinerSimplified(list_of_instructions).process()
+print()
 Pipeliner(list_of_instructions).process()
-
-
-# TODO refactor so you can write
-# list_of_instructions = load_from_file('input.txt')
-# pipeliner = Pipeliner()
-#
-# simplified = pipeliner.processSimplified(list_of_instructions)
-# full = pipeliner.processFull(list_of_instructions)
-# extended = pipeliner.processExtended(list_of_instructions)
-#
-# print(simplified)
-# print()
-# print(full)
-# print()
-# print(extended)
