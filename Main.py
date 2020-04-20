@@ -1,4 +1,4 @@
-from typing import List, Dict, NamedTuple
+from typing import List, Dict, NamedTuple, Optional
 
 
 class Instruction(NamedTuple):
@@ -56,17 +56,27 @@ def process_full(instructions: List[Instruction],
         return (cycles_until_available[instr.argument_register_2] <= 0) and \
                (cycles_until_available[instr.argument_register_1] <= 1)
 
-    def can_execute(instr: Instruction) -> bool:
-        return can_execute_as_is(instr) or (instr.is_commutative() and can_execute_swapped(instr))
+    def get_executable(instr: Instruction) -> Optional[Instruction]:
+        if can_execute_as_is(instr):
+            return instr
+        if instr.is_commutative() and can_execute_swapped(instr):
+            # TODO maybe swap constructor?
+            return Instruction(instr.function,
+                               instr.argument_register_2,
+                               instr.argument_register_1,
+                               instr.result_register)
+        else:
+            return None
 
     result: Dict[Instruction, int] = {}
     i = 0
 
     while i < len(instructions):
         instruction = instructions[i]
-        if can_execute(instruction):
+        executable = get_executable(instruction)
+        if executable:
             cycles_until_available[instruction.result_register] = 4
-            result[instruction] = starting_cycle + 1
+            result[executable] = starting_cycle + 1
             i += 1
         starting_cycle += 1
         # print(str(self.current_cycle) + "\t" + str(self.cycles_util_available))
