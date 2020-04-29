@@ -1,4 +1,5 @@
 from typing import List, Dict, NamedTuple, Optional
+import copy
 
 
 class Instruction(NamedTuple):
@@ -18,16 +19,16 @@ class Instruction(NamedTuple):
             self.result_register
         )
 
-
+# TODO use composition instead of inheritance
 class OrderedInstruction(Instruction):
     order: int
 
-    # todo ask stackoverflow
-    def __new__(cls, instruction: Instruction, order: int):
+    @classmethod
+    def from_instruction(cls, instruction: Instruction, order: int):
         self = super().__new__(cls, instruction.function,
-                               instruction.argument_register_1,
-                               instruction.argument_register_2,
-                               instruction.result_register)
+                                   instruction.argument_register_1,
+                                   instruction.argument_register_2,
+                                   instruction.result_register)
         self.order = order
         return self
 
@@ -49,14 +50,14 @@ def process_simplified(instructions: List[Instruction],
         return (cycles_until_available[instr.argument_register_1] <= 0) and \
                (cycles_until_available[instr.argument_register_2] <= 1)
 
-    result: List[Instruction] = []
+    result: List[OrderedInstruction] = []
     i = 0
 
     while i < len(instructions):
         instruction = instructions[i]
         if can_execute(instruction):
             cycles_until_available[instruction.result_register] = 4
-            result.append(OrderedInstruction(instruction, starting_cycle+1))
+            result.append(OrderedInstruction.from_instruction(instruction, starting_cycle+1))
             i += 1
         starting_cycle += 1
         cycles_until_available = {instruction: (cycle - 1 if cycle else cycle) for
@@ -97,7 +98,7 @@ def process_full(instructions: List[Instruction],
         executable = get_executable(instruction)
         if executable:
             cycles_until_available[instruction.result_register] = 4
-            result.append(OrderedInstruction(instruction, starting_cycle + 1))
+            result.append(OrderedInstruction.from_instruction(executable, starting_cycle + 1))
             i += 1
         starting_cycle += 1
         cycles_until_available = {instruction: (cycle - 1 if cycle else cycle) for
@@ -106,84 +107,47 @@ def process_full(instructions: List[Instruction],
     return result
 
 
-def process_extended(initially_optimized_instructions: Dict[Instruction, int],
-                     starting_cycle: int,
-                     cycles_until_available: Dict[str, int]) -> Dict[Instruction, int]:
+def process_extended(initially_optimized_instructions: List[OrderedInstruction]) -> List[OrderedInstruction]:
 
     # defines for how many cycles the result register of this instruction will be unused
-    def idle_cycles_left(instr: Instruction) -> int:
-        current_instruction_starting_index = initially_optimized_instructions[instr]
-        # todo fixme below list is created every time
-        instructions = list(initially_optimized_instructions.keys())
-        next_instruction_index = instructions.index(instr) + 1
+    def idle_cycles_left(instr: OrderedInstruction) -> int: # r0 r3 r0 shouldnt be -1
+        next_instruction_index = initially_optimized_instructions.index(instr) + 1
         cycles_left = 0
-        for next_instruction in instructions[next_instruction_index:]:
+        for next_instruction in initially_optimized_instructions[next_instruction_index:]:
             if next_instruction.argument_register_1 == instr.result_register:
-                next_instruction_starting_index = initially_optimized_instructions[next_instruction]
-                return next_instruction_starting_index - current_instruction_starting_index - 4
+                return next_instruction.order - instr.order - 4
             if next_instruction.argument_register_2 == instr.result_register:
-                next_instruction_starting_index = initially_optimized_instructions[next_instruction]
-                return next_instruction_starting_index - current_instruction_starting_index - 3
+                return next_instruction.order - instr.order - 3
             cycles_left += 1
 
         return cycles_left
 
-    idle_result_cycles: Dict[Instruction, int] = \
-        {instr: idle_cycles_left(instr) for instr in initially_optimized_instructions}
+    result: List[OrderedInstruction] = copy.deepcopy(initially_optimized_instructions)
 
-    independent_instructions: List[Instruction] = [key for (key, value) in idle_result_cycles.items() if value]
-    dependent_instructions: List[Instruction] = [key for (key, value) in idle_result_cycles.items() if not value]
+    idle_result_cycles: Dict[Instruction, int] = {instr: idle_cycles_left(instr) for instr in result}
 
-    # result: Dict[Instruction, int] = {}
-    #
-    # while True:
-    #     if dependent_instructions and independent_instructions:
-    #         # were moving independent instruction between two dependent
-    #         independent_instr = independent_instructions.pop(0)
-    #         dependent_instr = dependent_instructions.pop(0)
-    #
-    #         if dependent_instr and independent_instr:
-    #             diff = initially_optimized_instructions[dependent_instr] - initially_optimized_instructions[independent_instr]
-    #             can_move = diff < idle_result_cycles[independent_instr]
-    #             if can_move:
-    #                 # only error = update indexes of items following the one swapped
-    #                 result[dependent_instr] = initially_optimized_instructions[independent_instr]
-    #                 result[independent_instr] = initially_optimized_instructions[dependent_instr]
-    #             else:
-    #                 result[dependent_instr] = initially_optimized_instructions[dependent_instr]
-    #                 result[independent_instr] = initially_optimized_instructions[independent_instr]
-    #     elif dependent_instructions:
-    #         for dependent_instr in dependent_instructions:
-    #             result[dependent_instr] = initially_optimized_instructions[dependent_instr]
-    #         for independent_instr in independent_instructions:
-    #             result[independent_instr] = initially_optimized_instructions[independent_instr]
-    #         break
-
-    result: Dict[Instruction, int] = initially_optimized_instructions.copy()
+    independent_instructions: List[OrderedInstruction] = [key for (key, value) in idle_result_cycles.items() if value]
+    dependent_instructions: List[OrderedInstruction] = [key for (key, value) in idle_result_cycles.items() if not value]
 
     while dependent_instructions and independent_instructions:
         # were moving independent instruction between two dependent
         independent_instr = independent_instructions.pop(0)
         dependent_instr = dependent_instructions.pop(0)
 
-        diff = result[dependent_instr] - result[independent_instr]
+        diff = dependent_instr.order - independent_instr.order
         can_move = diff < idle_result_cycles[independent_instr]
         if can_move:
-            result[dependent_instr], result[independent_instr] = result[independent_instr], result[dependent_instr]
+            dependent_instr.order, independent_instr.order = independent_instr.order, dependent_instr.order
 
-            for (instr, start_cycle) in result.items():
+            for instr in result:
                 if instr != independent_instr and instr != dependent_instr:
-                    result[instr] -= 1
+                    instr.order -= 1
 
     return result
 
 
-def print_instructions(scheduled_instructions: Dict[Instruction, int]):
-    for instruction, start_cycle in scheduled_instructions.items():
-        print(str(instruction) + " " + str(start_cycle))
-
-
 def print_instructions(scheduled_instructions: List[OrderedInstruction]):
+    scheduled_instructions.sort(key=lambda x: x.order)
     for instruction in scheduled_instructions:
         print(str(instruction))
 
@@ -206,12 +170,10 @@ list_of_instructions = load_from_file('input.txt')
 
 instructions_simplified_variant = process_simplified(list_of_instructions, 0, registers_availability_monitor(10))
 instructions_full_variant = process_full(list_of_instructions, 0, registers_availability_monitor(10))
-
-# optimized_instructions = list(instructions_full_variant.keys())
-#instructions_extended_variant = process_extended(instructions_full_variant, 0, registers_availability_monitor(10))
+instructions_extended_variant = process_extended(instructions_full_variant)
 
 print_instructions(instructions_simplified_variant)
 print()
 print_instructions(instructions_full_variant)
 print()
-#print_instructions(instructions_extended_variant)
+print_instructions(instructions_extended_variant)
